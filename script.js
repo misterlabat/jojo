@@ -43,10 +43,462 @@ const camera = {
 let timeStopped = false;
 let timeStopperId = null;
 
-// ── GAME MODE & AI ──────────────────────────────────────────
+// ── SOUND MANAGER ───────────────────────────────────────────
+const SoundManager = {
+    sounds: {},
+    load(key, src, duration) {
+        const audio = new Audio(src);
+        audio.preload = 'auto';
+        this.sounds[key] = { audio, duration };
+    },
+    play(key) {
+        const s = this.sounds[key];
+        if (!s) return;
+        // Stop and rewind if already playing so rapid triggers still fire
+        s.audio.pause();
+        s.audio.currentTime = 0;
+        // Only play up to the specified duration
+        s.audio.play().catch(() => {}); // catch needed for browser autoplay policy
+        if (s.duration) {
+            setTimeout(() => {
+                s.audio.pause();
+                s.audio.currentTime = 0;
+            }, s.duration * 1000);
+        }
+    }
+};
+
+// Preload all stand sounds
+SoundManager.load('timestop',     'sounds/TIMESTOP.mp3',     2);
+SoundManager.load('diotimestop',  'sounds/DIOTIMESTOP.mp3',  4);
+SoundManager.load('kingcrimson',  'sounds/KINGCRIMSON.mp3',  1);
+SoundManager.load('crazydiamond','sounds/CRAZYDIAMOND.mp3',  4);
+SoundManager.load('killerqueen', 'sounds/KILLERQUEEN.mp3',   4);
+
 let gameMode = 'pvp';       // 'pvp' or 'cpu'
 let aiDifficulty = 'medium'; // 'easy', 'medium', 'hard'
 let aiController = null;
+
+// ── STAGES ──────────────────────────────────────────────────
+let selectedStage = null;
+
+const STAGES = [
+    {
+        id: 'cairo',
+        name: 'Cairo',
+        part: 3,
+        partColor: '#f1c40f',
+        sky: ['#0a0a2e', '#1a1a4e'],        // deep night blue
+        groundColor: '#c8a96e',
+        groundTop: '#e8c98e',
+        draw(ctx, W, H, G) { drawCairo(ctx, W, H, G); }
+    },
+    {
+        id: 'morioh4',
+        name: 'Morioh',
+        part: 4,
+        partColor: '#8e44ad',
+        sky: ['#87CEEB', '#b0e0ff'],
+        groundColor: '#5a7a3a',
+        groundTop: '#7aaa4a',
+        draw(ctx, W, H, G) { drawMorioh(ctx, W, H, G); }
+    },
+    {
+        id: 'naples',
+        name: 'Naples',
+        part: 5,
+        partColor: '#e74c3c',
+        sky: ['#ff6b35', '#ff9f55'],
+        groundColor: '#8B7355',
+        groundTop: '#a08060',
+        draw(ctx, W, H, G) { drawNaples(ctx, W, H, G); }
+    },
+    {
+        id: 'prison',
+        name: 'Green Dolphin',
+        part: 6,
+        partColor: '#1abc9c',
+        sky: ['#1a3a5c', '#2a5a8c'],
+        groundColor: '#4a4a4a',
+        groundTop: '#5a5a5a',
+        draw(ctx, W, H, G) { drawPrison(ctx, W, H, G); }
+    },
+    {
+        id: 'plains',
+        name: 'American Plains',
+        part: 7,
+        partColor: '#e67e22',
+        sky: ['#87CEEB', '#c8eeff'],
+        groundColor: '#8B6914',
+        groundTop: '#c8a040',
+        draw(ctx, W, H, G) { drawPlains(ctx, W, H, G); }
+    },
+    {
+        id: 'morioh8',
+        name: 'Morioh (JJL)',
+        part: 8,
+        partColor: '#3498db',
+        sky: ['#ffd6e8', '#ffe8f0'],
+        groundColor: '#5a6a4a',
+        groundTop: '#7a9a6a',
+        draw(ctx, W, H, G) { drawMoriohJJL(ctx, W, H, G); }
+    },
+    {
+        id: 'hawaii',
+        name: 'Hawaii',
+        part: 9,
+        partColor: '#9b59b6',
+        sky: ['#00b4d8', '#48cae4'],
+        groundColor: '#c8a96e',
+        groundTop: '#e8c98e',
+        draw(ctx, W, H, G) { drawHawaii(ctx, W, H, G); }
+    },
+];
+
+// ── STAGE DRAWING FUNCTIONS ──────────────────────────────────
+
+function drawSky(ctx, W, H, colors) {
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, colors[0]);
+    grad.addColorStop(1, colors[1]);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+}
+
+function drawStars(ctx, W, count) {
+    ctx.fillStyle = 'white';
+    for (let i = 0; i < count; i++) {
+        const sx = (i * 337) % W;
+        const sy = (i * 179) % 220;
+        const ss = i % 3 === 0 ? 2 : 1;
+        ctx.fillRect(sx, sy, ss, ss);
+    }
+}
+
+function drawClouds(ctx, W, color, y, count) {
+    ctx.fillStyle = color;
+    for (let i = 0; i < count; i++) {
+        const cx = (i * (W / count)) + 80;
+        const cy = y + (i % 3) * 20;
+        const r = 28 + (i % 3) * 12;
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + r * 0.7, cy + 5, r * 0.7, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx - r * 0.6, cy + 8, r * 0.6, 0, Math.PI * 2); ctx.fill();
+    }
+}
+
+// Part 3 — Cairo night desert
+function drawCairo(ctx, W, H, G) {
+    drawSky(ctx, W, H, ['#0a0a2e', '#1a1a4e']);
+    drawStars(ctx, W, 80);
+    // Moon
+    ctx.fillStyle = '#fffde0';
+    ctx.beginPath(); ctx.arc(W - 250, 80, 45, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1a1a4e';
+    ctx.beginPath(); ctx.arc(W - 233, 72, 40, 0, Math.PI * 2); ctx.fill();
+    // Pyramids
+    const pyramids = [[600,G,220], [1000,G,170], [1400,G,200], [2100,G,180], [2600,G,150], [3000,G,190]];
+    pyramids.forEach(([px,py,ps]) => {
+        ctx.fillStyle = '#c8a45a';
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px - ps, py); ctx.lineTo(px - ps/2, py - ps * 0.7); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#a07840';
+        ctx.beginPath(); ctx.moveTo(px - ps/2, py - ps*0.7); ctx.lineTo(px, py); ctx.lineTo(px - ps/2 + 30, py); ctx.closePath(); ctx.fill();
+    });
+    // Sand dunes
+    ctx.fillStyle = '#c8a96e';
+    for (let d = 0; d < W; d += 300) {
+        ctx.beginPath(); ctx.arc(d + 150, G + 10, 180, Math.PI, 0); ctx.fill();
+    }
+    // Ground
+    ctx.fillStyle = '#c8a96e';
+    ctx.fillRect(0, G, W, H - G);
+    ctx.fillStyle = '#e8c98e';
+    ctx.fillRect(0, G, W, 10);
+}
+
+// Part 4 — Morioh town daytime
+function drawMorioh(ctx, W, H, G) {
+    drawSky(ctx, W, H, ['#87CEEB', '#b0e0ff']);
+    drawClouds(ctx, W, 'rgba(255,255,255,0.85)', 60, 6);
+    // Sun
+    ctx.fillStyle = '#fff176';
+    ctx.beginPath(); ctx.arc(200, 90, 50, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffee58';
+    ctx.beginPath(); ctx.arc(200, 90, 38, 0, Math.PI * 2); ctx.fill();
+    // Houses
+    const houses = [
+        [120,G,80,100,'#e8d5b0','#c0392b'],
+        [320,G,100,130,'#d4c5a0','#8B4513'],
+        [600,G,70,90,'#f0e0c0','#e74c3c'],
+        [850,G,90,110,'#ddd0b0','#c0392b'],
+        [1100,G,75,100,'#e8d5b0','#8B4513'],
+        [1380,G,95,120,'#d4c5a0','#e74c3c'],
+        [1650,G,80,100,'#f0e0c0','#c0392b'],
+        [1900,G,100,130,'#e0d0a0','#8B4513'],
+        [2200,G,70,90,'#e8d5b0','#e74c3c'],
+        [2500,G,90,110,'#d4c5a0','#c0392b'],
+        [2750,G,80,100,'#f0e0c0','#8B4513'],
+        [3000,G,95,115,'#e0d0a0','#e74c3c'],
+    ];
+    houses.forEach(([hx,hy,hw,hh,wall,roof]) => {
+        ctx.fillStyle = wall;
+        ctx.fillRect(hx - hw/2, hy - hh, hw, hh);
+        ctx.fillStyle = roof;
+        ctx.beginPath(); ctx.moveTo(hx - hw/2 - 8, hy - hh); ctx.lineTo(hx, hy - hh - hw*0.5); ctx.lineTo(hx + hw/2 + 8, hy - hh); ctx.closePath(); ctx.fill();
+        // Window
+        ctx.fillStyle = '#87CEEB';
+        ctx.fillRect(hx - 12, hy - hh + 20, 22, 18);
+        ctx.strokeStyle = '#888'; ctx.lineWidth = 2;
+        ctx.strokeRect(hx - 12, hy - hh + 20, 22, 18);
+    });
+    // Road
+    ctx.fillStyle = '#888';
+    ctx.fillRect(0, G - 4, W, 4);
+    // Grass
+    ctx.fillStyle = '#5a7a3a';
+    ctx.fillRect(0, G, W, H - G);
+    ctx.fillStyle = '#7aaa4a';
+    ctx.fillRect(0, G, W, 8);
+}
+
+// Part 5 — Naples sunset
+function drawNaples(ctx, W, H, G) {
+    drawSky(ctx, W, H, ['#ff4500', '#ff9f55']);
+    // Sun on horizon
+    ctx.fillStyle = '#fff176';
+    ctx.beginPath(); ctx.arc(W/2, G + 20, 70, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = 'rgba(255,200,50,0.3)';
+    ctx.beginPath(); ctx.arc(W/2, G + 20, 120, Math.PI, 0); ctx.fill();
+    // Italian buildings
+    const blds = [
+        [80,G,90,180,'#e8c89a'],  [250,G,70,220,'#ddb870'],
+        [420,G,100,160,'#e0c090'], [620,G,80,200,'#c8a870'],
+        [820,G,110,180,'#ddc088'], [1050,G,75,210,'#e8c890'],
+        [1280,G,95,170,'#d4b878'], [1500,G,85,190,'#e0c080'],
+        [1720,G,100,160,'#c8b070'],[1950,G,70,220,'#ddc080'],
+        [2180,G,90,180,'#e8c88a'],[2400,G,80,200,'#d4b870'],
+        [2650,G,105,175,'#ddc090'],[2900,G,75,210,'#e0c078'],
+        [3150,G,90,185,'#c8b068'],
+    ];
+    blds.forEach(([bx,by,bw,bh,col]) => {
+        ctx.fillStyle = col;
+        ctx.fillRect(bx - bw/2, by - bh, bw, bh);
+        // Flat roof detail
+        ctx.fillStyle = '#a08858';
+        ctx.fillRect(bx - bw/2 - 4, by - bh, bw + 8, 8);
+        // Windows
+        ctx.fillStyle = '#ffcc44';
+        for (let wy = by - bh + 20; wy < by - 20; wy += 35) {
+            ctx.fillRect(bx - bw/2 + 8, wy, 14, 18);
+            if (bw > 75) ctx.fillRect(bx + 8, wy, 14, 18);
+        }
+    });
+    // Cobblestone ground
+    ctx.fillStyle = '#8B7355';
+    ctx.fillRect(0, G, W, H - G);
+    ctx.fillStyle = '#a08060';
+    ctx.fillRect(0, G, W, 10);
+    ctx.strokeStyle = '#7a6040'; ctx.lineWidth = 1;
+    for (let cx = 0; cx < W; cx += 40) {
+        ctx.beginPath(); ctx.moveTo(cx, G); ctx.lineTo(cx, G + 30); ctx.stroke();
+    }
+}
+
+// Part 6 — Green Dolphin Prison
+function drawPrison(ctx, W, H, G) {
+    drawSky(ctx, W, H, ['#1a3a5c', '#2a5a8c']);
+    drawStars(ctx, W, 40);
+    // Ocean horizon
+    const oceanGrad = ctx.createLinearGradient(0, G - 120, 0, G);
+    oceanGrad.addColorStop(0, '#1a4a8c');
+    oceanGrad.addColorStop(1, '#0d2a5c');
+    ctx.fillStyle = oceanGrad;
+    ctx.fillRect(0, G - 120, W, 120);
+    // Ocean waves
+    ctx.strokeStyle = 'rgba(100,160,255,0.4)'; ctx.lineWidth = 2;
+    for (let wx = 0; wx < W; wx += 120) {
+        ctx.beginPath(); ctx.arc(wx + 60, G - 20, 60, Math.PI, 0); ctx.stroke();
+    }
+    // Prison walls & towers
+    ctx.fillStyle = '#5a5a5a';
+    ctx.fillRect(0, G - 160, W, 160);
+    // Wall top battlements
+    ctx.fillStyle = '#4a4a4a';
+    for (let tx = 0; tx < W; tx += 60) {
+        ctx.fillRect(tx, G - 185, 35, 30);
+    }
+    // Watchtowers
+    [150, 600, 1100, 1700, 2300, 2800, 3200].forEach(tx => {
+        ctx.fillStyle = '#404040';
+        ctx.fillRect(tx - 35, G - 260, 70, 105);
+        ctx.fillStyle = '#383838';
+        ctx.fillRect(tx - 45, G - 275, 90, 18);
+        // Tower light
+        ctx.fillStyle = 'rgba(255,255,100,0.6)';
+        ctx.beginPath(); ctx.arc(tx, G - 268, 10, 0, Math.PI * 2); ctx.fill();
+        // Searchlight beam
+        ctx.fillStyle = 'rgba(255,255,150,0.08)';
+        ctx.beginPath(); ctx.moveTo(tx, G - 268); ctx.lineTo(tx - 200, G - 160); ctx.lineTo(tx + 200, G - 160); ctx.closePath(); ctx.fill();
+        // Barred window
+        ctx.fillStyle = '#222';
+        ctx.fillRect(tx - 12, G - 220, 24, 30);
+        ctx.strokeStyle = '#888'; ctx.lineWidth = 2;
+        for (let bar = tx - 8; bar < tx + 14; bar += 8) {
+            ctx.beginPath(); ctx.moveTo(bar, G - 220); ctx.lineTo(bar, G - 190); ctx.stroke();
+        }
+    });
+    // Concrete ground
+    ctx.fillStyle = '#4a4a4a';
+    ctx.fillRect(0, G, W, H - G);
+    ctx.fillStyle = '#5a5a5a';
+    ctx.fillRect(0, G, W, 8);
+    // Concrete cracks
+    ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 1;
+    for (let crk = 0; crk < W; crk += 200) {
+        ctx.beginPath(); ctx.moveTo(crk + 50, G); ctx.lineTo(crk + 80, G + 25); ctx.stroke();
+    }
+}
+
+// Part 7 — American Plains
+function drawPlains(ctx, W, H, G) {
+    drawSky(ctx, W, H, ['#87CEEB', '#c8eeff']);
+    drawClouds(ctx, W, 'rgba(255,255,255,0.9)', 50, 5);
+    // Distant mountains
+    ctx.fillStyle = '#8aaabb';
+    const mtns = [[200,G-80,300],[700,G-110,380],[1300,G-90,320],[1900,G-100,350],[2600,G-85,300],[3100,G-95,330]];
+    mtns.forEach(([mx,my,ms]) => {
+        ctx.beginPath(); ctx.moveTo(mx-ms/2,G-5); ctx.lineTo(mx,my); ctx.lineTo(mx+ms/2,G-5); ctx.closePath(); ctx.fill();
+        // Snow cap
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.moveTo(mx-30,my+35); ctx.lineTo(mx,my); ctx.lineTo(mx+30,my+35); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#8aaabb';
+    });
+    // Distant trees
+    ctx.fillStyle = '#2d6a2d';
+    for (let t = 0; t < W; t += 180) {
+        ctx.fillRect(t + 60, G - 70, 12, 50);
+        ctx.beginPath(); ctx.arc(t + 66, G - 80, 25, 0, Math.PI * 2); ctx.fill();
+    }
+    // Fence posts
+    ctx.fillStyle = '#8B6914';
+    for (let f = 0; f < W; f += 120) {
+        ctx.fillRect(f + 10, G - 35, 8, 35);
+        ctx.fillRect(f + 10, G - 35, 100, 5);
+        ctx.fillRect(f + 10, G - 22, 100, 5);
+    }
+    // Dirt ground
+    ctx.fillStyle = '#8B6914';
+    ctx.fillRect(0, G, W, H - G);
+    ctx.fillStyle = '#c8a040';
+    ctx.fillRect(0, G, W, 10);
+    // Tire track lines
+    ctx.strokeStyle = '#7a5808'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(0, G + 20); ctx.lineTo(W, G + 20); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, G + 40); ctx.lineTo(W, G + 40); ctx.stroke();
+}
+
+// Part 8 — Morioh JoJolion (cherry blossom spring)
+function drawMoriohJJL(ctx, W, H, G) {
+    drawSky(ctx, W, H, ['#ffd6e8', '#ffe8f0']);
+    // Cherry blossom petals drifting (static positions)
+    ctx.fillStyle = 'rgba(255,182,193,0.7)';
+    for (let p = 0; p < 60; p++) {
+        const px = (p * 487) % W;
+        const py = (p * 293) % (G - 50);
+        ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    // Wall of Roses / TG University wall
+    ctx.fillStyle = '#d4c4b0';
+    ctx.fillRect(0, G - 130, W, 130);
+    // Wall detail - brickwork
+    ctx.strokeStyle = '#c0b0a0'; ctx.lineWidth = 1;
+    for (let row = 0; row < 5; row++) {
+        for (let col = 0; col < W; col += 80) {
+            const offset = (row % 2) * 40;
+            ctx.strokeRect(col + offset - 40, G - 130 + row * 26, 78, 24);
+        }
+    }
+    // Cherry blossom trees
+    const trees = [100, 400, 750, 1150, 1550, 1950, 2350, 2750, 3100];
+    trees.forEach(tx => {
+        // Trunk
+        ctx.fillStyle = '#6b4226';
+        ctx.fillRect(tx - 8, G - 220, 16, 100);
+        // Branch left/right
+        ctx.strokeStyle = '#6b4226'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(tx, G - 180); ctx.lineTo(tx - 55, G - 230); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(tx, G - 180); ctx.lineTo(tx + 55, G - 230); ctx.stroke();
+        // Blossom clouds
+        ctx.fillStyle = 'rgba(255,182,193,0.85)';
+        [[0,-30,40],[-50,-20,32],[50,-20,32],[-30,-55,28],[30,-55,28]].forEach(([ox,oy,r]) => {
+            ctx.beginPath(); ctx.arc(tx + ox, G - 210 + oy, r, 0, Math.PI * 2); ctx.fill();
+        });
+    });
+    // Pavement
+    ctx.fillStyle = '#8a9a7a';
+    ctx.fillRect(0, G, W, H - G);
+    ctx.fillStyle = '#aaba9a';
+    ctx.fillRect(0, G, W, 8);
+    // Pavement tiles
+    ctx.strokeStyle = '#7a8a6a'; ctx.lineWidth = 1;
+    for (let tile = 0; tile < W; tile += 50) {
+        ctx.beginPath(); ctx.moveTo(tile, G); ctx.lineTo(tile, G + 30); ctx.stroke();
+    }
+}
+
+// Part 9 — Hawaii beach
+function drawHawaii(ctx, W, H, G) {
+    drawSky(ctx, W, H, ['#00b4d8', '#48cae4']);
+    drawClouds(ctx, W, 'rgba(255,255,255,0.8)', 40, 4);
+    // Sun
+    ctx.fillStyle = '#fff9c4';
+    ctx.beginPath(); ctx.arc(300, 100, 60, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff176';
+    ctx.beginPath(); ctx.arc(300, 100, 44, 0, Math.PI * 2); ctx.fill();
+    // Ocean
+    const oceanGrad = ctx.createLinearGradient(0, G - 100, 0, G);
+    oceanGrad.addColorStop(0, '#0077b6');
+    oceanGrad.addColorStop(1, '#00b4d8');
+    ctx.fillStyle = oceanGrad;
+    ctx.fillRect(0, G - 100, W, 100);
+    // Wave foam
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 3;
+    for (let wx = 0; wx < W; wx += 200) {
+        ctx.beginPath(); ctx.arc(wx + 100, G - 15, 100, Math.PI, 0); ctx.stroke();
+        ctx.beginPath(); ctx.arc(wx, G - 8, 60, Math.PI, 0); ctx.stroke();
+    }
+    // Palm trees
+    const palms = [200, 700, 1300, 1900, 2500, 3050];
+    palms.forEach(px => {
+        // Trunk (slightly leaning)
+        ctx.strokeStyle = '#8B5E3C'; ctx.lineWidth = 14;
+        ctx.beginPath(); ctx.moveTo(px, G); ctx.quadraticCurveTo(px + 20, G - 100, px + 35, G - 200); ctx.stroke();
+        // Coconuts
+        ctx.fillStyle = '#5d4037';
+        [[0,0],[15,-10],[-10,-8]].forEach(([ox,oy]) => {
+            ctx.beginPath(); ctx.arc(px + 35 + ox, G - 200 + oy, 8, 0, Math.PI * 2); ctx.fill();
+        });
+        // Palm leaves
+        ctx.fillStyle = '#2d6a1a';
+        [[-80,-30],[-50,-70],[0,-90],[50,-70],[80,-30],[60,10],[-60,10]].forEach(([lx,ly]) => {
+            ctx.beginPath();
+            ctx.moveTo(px + 35, G - 200);
+            ctx.quadraticCurveTo(px + 35 + lx/2, G - 200 + ly/2 - 15, px + 35 + lx, G - 200 + ly);
+            ctx.lineWidth = 8; ctx.strokeStyle = '#2d6a1a'; ctx.stroke();
+        });
+    });
+    // Sandy beach
+    ctx.fillStyle = '#c8a96e';
+    ctx.fillRect(0, G, W, H - G);
+    ctx.fillStyle = '#e8c98e';
+    ctx.fillRect(0, G, W, 10);
+    // Sand texture dots
+    ctx.fillStyle = 'rgba(180,150,80,0.4)';
+    for (let sd = 0; sd < 120; sd++) {
+        ctx.beginPath(); ctx.arc((sd * 337) % W, G + 5 + (sd * 7) % 25, 2, 0, Math.PI * 2); ctx.fill();
+    }
+}
+
 
 // ============================================================
 // CHARACTER ROSTER - Parts 3 through 9
@@ -63,6 +515,7 @@ const CHARACTERS = [
         type: "melee",
         specialType: "timestop",
         duration: 1800,
+        sound: "timestop",
         desc: "Star Platinum: ORA Barrage + Brief Time Stop"
     },
     {
@@ -75,6 +528,7 @@ const CHARACTERS = [
         type: "melee",
         specialType: "timestop",
         duration: 4000,
+        sound: "diotimestop",
         desc: "The World: MUDA Barrage + Massive Time Stop"
     },
     {
@@ -204,6 +658,7 @@ const CHARACTERS = [
         dmg: 15,
         type: "melee",
         specialType: "heal",
+        sound: "crazydiamond",
         desc: "Crazy Diamond: Shattering Fists + Restoration"
     },
     {
@@ -215,6 +670,7 @@ const CHARACTERS = [
         dmg: 22,
         type: "melee",
         specialType: "bomb",
+        sound: "killerqueen",
         desc: "Killer Queen: Sheer Heart Attack Explosion"
     },
     {
@@ -399,6 +855,7 @@ const CHARACTERS = [
         dmg: 18,
         type: "melee",
         specialType: "skip",
+        sound: "kingcrimson",
         desc: "King Crimson: Epitaph Prediction + Time Erase"
     },
     {
@@ -832,6 +1289,43 @@ CHARACTERS.forEach((char, i) => {
     charGrid.appendChild(card);
 });
 
+// Build stage select cards (mini canvas previews)
+function buildStageSelect() {
+    const grid = document.getElementById('stage-grid');
+    grid.innerHTML = '';
+    STAGES.forEach((stage, i) => {
+        const card = document.createElement('div');
+        card.className = 'stage-card';
+
+        // Mini preview canvas
+        const previewCanvas = document.createElement('canvas');
+        previewCanvas.width = 320;
+        previewCanvas.height = 180;
+        const pc = previewCanvas.getContext('2d');
+        // Draw a mini version of the stage
+        stage.draw(pc, 320, 180, 140);
+        card.appendChild(previewCanvas);
+
+        // Label
+        const label = document.createElement('div');
+        label.className = 'stage-card-label';
+        label.innerHTML = `
+            <div class="stage-card-part" style="color:${stage.partColor}">PART ${stage.part}</div>
+            <div class="stage-card-name" style="color:${stage.partColor}">${stage.name}</div>
+        `;
+        card.appendChild(label);
+        card.onclick = () => pickStage(i);
+        grid.appendChild(card);
+    });
+}
+buildStageSelect();
+
+function pickStage(idx) {
+    selectedStage = STAGES[idx];
+    document.getElementById('stage-select').style.display = 'none';
+    initGame();
+}
+
 function selectMode(mode) {
     gameMode = mode;
     document.getElementById('mode-select').style.display = 'none';
@@ -860,7 +1354,7 @@ function selectChar(idx, el) {
         if (gameMode === 'cpu') {
             // Pick a random character for the AI
             p2Data = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
-            setTimeout(initGame, 400);
+            setTimeout(showStageSelect, 400);
         } else {
             selectingPlayer = 2;
             document.getElementById('selection-msg').innerText = "Player 2: Select Character";
@@ -869,8 +1363,13 @@ function selectChar(idx, el) {
     } else {
         p2Data = CHARACTERS[idx];
         el.classList.add('selected-p2');
-        setTimeout(initGame, 400);
+        setTimeout(showStageSelect, 400);
     }
+}
+
+function showStageSelect() {
+    document.getElementById('char-select').style.display = 'none';
+    document.getElementById('stage-select').style.display = 'flex';
 }
 
 // ============================================================
@@ -955,6 +1454,8 @@ class Player {
 
     useSpecial(opp) {
         this.sp = 0;
+        // Play stand sound if this character has one
+        if (this.data.sound) SoundManager.play(this.data.sound);
         const sType = this.data.specialType;
 
         switch (sType) {
@@ -1589,7 +2090,10 @@ function updateBars() {
 // GAME INIT / END
 // ============================================================
 function initGame() {
+    selectingPlayer = 1;
+    projectiles = [];
     document.getElementById('char-select').style.display = 'none';
+    document.getElementById('stage-select').style.display = 'none';
     document.getElementById('hud').style.display = 'flex';
 
     player1 = new Player(1, WORLD_WIDTH * 0.3, p1Data, { up: 'KeyW', left: 'KeyA', right: 'KeyD', attack: 'KeyF', special: 'KeyG' });
@@ -1657,19 +2161,20 @@ function gameLoop() {
     ctx.save();
     ctx.translate(-camera.x, 0);
 
-    // Ground
-    ctx.fillStyle = "#111";
-    ctx.fillRect(0, GROUND_Y, WORLD_WIDTH, 70);
-    // Ground grid lines
-    ctx.strokeStyle = "rgba(255,215,0,0.15)";
+    // Stage background
+    if (selectedStage) {
+        selectedStage.draw(ctx, WORLD_WIDTH, WORLD_HEIGHT, GROUND_Y);
+    } else {
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    }
+
+    // Ground overlay grid lines
+    ctx.strokeStyle = "rgba(255,215,0,0.10)";
     ctx.lineWidth = 2;
     for (let i = 0; i <= WORLD_WIDTH; i += 150) {
         ctx.beginPath(); ctx.moveTo(i, GROUND_Y); ctx.lineTo(i, WORLD_HEIGHT); ctx.stroke();
     }
-    // Boundary markers
-    ctx.fillStyle = "rgba(231,76,60,0.3)";
-    ctx.fillRect(0, 0, 15, WORLD_HEIGHT);
-    ctx.fillRect(WORLD_WIDTH - 15, 0, 15, WORLD_HEIGHT);
 
     ctx.restore();
 
