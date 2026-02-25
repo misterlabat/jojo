@@ -24,13 +24,55 @@
         </div>
     </div>
 
-    <div id="char-select" class="overlay">
+    <!-- MODE SELECT -->
+    <div id="mode-select" class="overlay">
+        <h1>Bizarre Battle</h1>
+        <p style="color: var(--jojo-gold); font-size: 1.4rem; margin-bottom: 30px; letter-spacing: 2px;">CHOOSE YOUR DESTINY</p>
+        <div class="mode-grid">
+            <div class="mode-card" onclick="selectMode('pvp')">
+                <div class="mode-icon">⚔️</div>
+                <div class="mode-title">1v1 VS</div>
+                <div class="mode-desc">Two players on the same keyboard</div>
+            </div>
+            <div class="mode-card" onclick="selectMode('cpu')">
+                <div class="mode-icon">🤖</div>
+                <div class="mode-title">VS CPU</div>
+                <div class="mode-desc">Fight a random AI opponent</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DIFFICULTY SELECT -->
+    <div id="difficulty-select" class="overlay" style="display:none;">
+        <h1>VS CPU</h1>
+        <p style="color: var(--jojo-gold); font-size: 1.4rem; margin-bottom: 30px; letter-spacing: 2px;">SELECT DIFFICULTY</p>
+        <div class="diff-grid">
+            <div class="diff-card diff-easy" onclick="selectDifficulty('easy')">
+                <div class="diff-rank">D</div>
+                <div class="diff-title">EASY</div>
+                <div class="diff-desc">Slow reactions, rarely uses specials. Good for beginners.</div>
+            </div>
+            <div class="diff-card diff-medium" onclick="selectDifficulty('medium')">
+                <div class="diff-rank">B</div>
+                <div class="diff-title">MEDIUM</div>
+                <div class="diff-desc">Decent timing, uses specials sometimes. A fair fight.</div>
+            </div>
+            <div class="diff-card diff-hard" onclick="selectDifficulty('hard')">
+                <div class="diff-rank">S</div>
+                <div class="diff-title">HARD</div>
+                <div class="diff-desc">Fast, aggressive, and uses specials at full SP. Good luck.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CHAR SELECT -->
+    <div id="char-select" class="overlay" style="display:none;">
         <h1>Bizarre Battle</h1>
         <p id="selection-msg" style="color: var(--jojo-gold); font-size: 1.5rem;">Player 1: Select Character</p>
         <div class="char-grid" id="char-grid"></div>
         <div class="controls-hint">
             <div>P1: WASD | F (Atk) | G (Special)</div>
-            <div>P2: Arrows | L (Atk) | K (Special)</div>
+            <div id="controls-p2-hint">P2: Arrows | L (Atk) | K (Special)</div>
         </div>
     </div>
 
