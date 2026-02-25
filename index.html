@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device=device-width, initial-scale=1.0">
+    <title>JoJo Bizarre Battle - Combat Evolved</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="game-container">
+    <div id="time-stop-overlay"></div>
+
+    <div id="hud" style="display: none;">
+        <div class="player-stats">
+            <div id="p1-label" style="font-size: 2rem; color: var(--jojo-blue);">P1</div>
+            <div class="bar-container"><div id="p1-hp" class="hp-bar"></div></div>
+            <div class="bar-container"><div id="p1-sp" class="sp-bar"></div></div>
+        </div>
+        <div class="player-stats" style="text-align: right;">
+            <div id="p2-label" style="font-size: 2rem; color: var(--jojo-red);">P2</div>
+            <div class="bar-container"><div id="p2-hp" class="hp-bar"></div></div>
+            <div class="bar-container"><div id="p2-sp" class="sp-bar"></div></div>
+        </div>
+    </div>
+
+    <div id="char-select" class="overlay">
+        <h1>Bizarre Battle</h1>
+        <p id="selection-msg" style="color: var(--jojo-gold); font-size: 1.5rem;">Player 1: Select Character</p>
+        <div class="char-grid" id="char-grid"></div>
+        <div class="controls-hint">
+            <div>P1: WASD | F (Atk) | G (Special)</div>
+            <div>P2: Arrows | L (Atk) | K (Special)</div>
+        </div>
+    </div>
+
+    <div id="win-screen" class="overlay" style="display: none;">
+        <h2 id="win-text" style="font-size: 6rem; color: var(--jojo-gold);">P1 WINS!</h2>
+        <button class="btn" onclick="location.reload()">REMATCH</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+@import url('https://fonts.googleapis.com/css2?family=Bangers&display=swap');
+
+:root {
+    --jojo-gold: #ffd700;
+    --jojo-red: #ff0000;
+    --jojo-blue: #3498db;
+    --bg-dark: #121212;
+    --ui-font: 'Bangers', cursive;
+}
+
+body, html {
+    margin: 0; padding: 0; overflow: hidden;
+    background-color: var(--bg-dark);
+    font-family: var(--ui-font);
+    color: white; user-select: none;
+}
+
+#game-container {
+    position: relative; width: 100vw; height: 100vh;
+    display: flex; justify-content: center; align-items: center;
+    background: #000;
+}
+
+canvas {
+    border: 5px solid var(--jojo-gold);
+    background: radial-gradient(circle, #2c3e50 0%, #000000 100%);
+    image-rendering: pixelated;
+}
+
+.overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    display: flex; flex-direction: column; justify-content: center;
+    align-items: center; background: rgba(0,0,0,0.92); z-index: 100;
+}
+
+h1 {
+    font-size: 5rem; color: var(--jojo-gold);
+    text-shadow: 6px 6px 0px var(--jojo-red); margin: 5px 0;
+    letter-spacing: 4px;
+}
+
+.char-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 15px; max-height: 75vh; overflow-y: auto; padding: 30px;
+    background: rgba(255,255,255,0.05); border-radius: 15px;
+    border: 2px solid var(--jojo-gold);
+}
+
+.char-card {
+    width: 150px; padding: 15px; border: 3px solid #444;
+    text-align: center; cursor: pointer; background: #1a1a1a; 
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.char-card:hover { border-color: var(--jojo-gold); transform: scale(1.1) translateY(-5px); background: #222; }
+.char-card.selected-p1 { border-color: var(--jojo-blue); box-shadow: 0 0 20px var(--jojo-blue); }
+.char-card.selected-p2 { border-color: var(--jojo-red); box-shadow: 0 0 20px var(--jojo-red); }
+
+.char-name { font-size: 1.4rem; margin-bottom: 5px; pointer-events: none; }
+.char-desc { font-size: 0.75rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #aaa; pointer-events: none; line-height: 1.2; }
+.char-part-tag { font-size: 0.65rem; font-family: 'Segoe UI', sans-serif; font-weight: bold; letter-spacing: 1px; pointer-events: none; margin-bottom: 2px; }
+
+.part-header {
+    grid-column: 1 / -1;
+    font-size: 1.6rem;
+    letter-spacing: 2px;
+    padding: 8px 14px;
+    border-left: 5px solid;
+    background: rgba(255,255,255,0.04);
+    margin-top: 10px;
+    text-shadow: 2px 2px 0 rgba(0,0,0,0.7);
+}
+
+#hud {
+    position: absolute; top: 20px; width: 96%;
+    display: flex; justify-content: space-between; z-index: 10; pointer-events: none;
+}
+
+.player-stats { width: 42%; filter: drop-shadow(0 0 5px rgba(0,0,0,0.8)); }
+.bar-container { width: 100%; background: #222; border: 3px solid #fff; margin: 6px 0; position: relative; height: 26px; overflow: hidden; }
+.hp-bar { height: 100%; width: 100%; background: #e74c3c; transition: width 0.3s ease-out; }
+.sp-bar { height: 100%; width: 50%; background: #f1c40f; transition: width 0.2s; }
+
+#p1-hp { background: linear-gradient(90deg, #1a5276, #3498db); }
+#p2-hp { background: linear-gradient(270deg, #7b241c, #e74c3c); }
+.sp-ready { box-shadow: 0 0 15px #fff; animation: pulse 1s infinite; }
+
+@keyframes pulse {
+    0% { filter: brightness(1); }
+    50% { filter: brightness(1.5); }
+    100% { filter: brightness(1); }
+}
+
+.btn {
+    padding: 12px 50px; font-size: 2.5rem; background: var(--jojo-gold);
+    color: #000; border: none; cursor: pointer; font-family: var(--ui-font);
+    clip-path: polygon(10% 0, 100% 0, 90% 100%, 0% 100%);
+    transition: 0.2s;
+}
+.btn:hover { background: #fff; transform: skewX(-5deg) scale(1.05); }
+
+#time-stop-overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(255, 255, 255, 0.1); mix-blend-mode: difference;
+    display: none; pointer-events: none; z-index: 50;
+}
+
+.controls-hint {
+    position: absolute; bottom: 20px; width: 100%; display: flex; 
+    justify-content: space-around; font-size: 1.2rem; color: #888;
+}
