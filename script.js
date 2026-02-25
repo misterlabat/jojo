@@ -46,19 +46,37 @@ let timeStopperId = null;
 // ── SOUND MANAGER ───────────────────────────────────────────
 const SoundManager = {
     sounds: {},
+    unlocked: false,
+
+    // Call this on first user interaction to unlock audio context
+    unlock() {
+        if (this.unlocked) return;
+        this.unlocked = true;
+        // Play and immediately pause every sound to warm them up
+        Object.values(this.sounds).forEach(s => {
+            s.audio.play().then(() => {
+                s.audio.pause();
+                s.audio.currentTime = 0;
+            }).catch(() => {});
+        });
+    },
+
     load(key, src, duration) {
         const audio = new Audio(src);
         audio.preload = 'auto';
+        audio.volume = 1.0;
         this.sounds[key] = { audio, duration };
     },
+
     play(key) {
         const s = this.sounds[key];
-        if (!s) return;
-        // Stop and rewind if already playing so rapid triggers still fire
+        if (!s) { console.warn('Sound not found:', key); return; }
         s.audio.pause();
         s.audio.currentTime = 0;
-        // Only play up to the specified duration
-        s.audio.play().catch(() => {}); // catch needed for browser autoplay policy
+        const playPromise = s.audio.play();
+        if (playPromise) {
+            playPromise.catch(err => console.warn('Sound play failed:', key, err));
+        }
         if (s.duration) {
             setTimeout(() => {
                 s.audio.pause();
@@ -74,6 +92,11 @@ SoundManager.load('diotimestop',  'sounds/DIOTIMESTOP.mp3',  4);
 SoundManager.load('kingcrimson',  'sounds/KINGCRIMSON.mp3',  1);
 SoundManager.load('crazydiamond','sounds/CRAZYDIAMOND.mp3',  4);
 SoundManager.load('killerqueen', 'sounds/KILLERQUEEN.mp3',   4);
+
+// Unlock audio on first click/keypress anywhere
+document.addEventListener('click', () => SoundManager.unlock(), { once: true });
+document.addEventListener('keydown', () => SoundManager.unlock(), { once: true });
+
 
 let gameMode = 'pvp';       // 'pvp' or 'cpu'
 let aiDifficulty = 'medium'; // 'easy', 'medium', 'hard'
