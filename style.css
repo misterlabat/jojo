@@ -158,3 +158,46 @@ h1 {
     font-weight: bold; letter-spacing: 1px;
     animation: pulse 1.2s infinite;
 }
+
+/* ── STAGE SELECT ── */
+.stage-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    padding: 10px;
+}
+.stage-card {
+    width: 160px;
+    cursor: pointer;
+    border: 3px solid #444;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #111;
+    transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.stage-card:hover {
+    border-color: var(--jojo-gold);
+    transform: scale(1.08) translateY(-5px);
+    box-shadow: 0 0 25px rgba(255,215,0,0.35);
+}
+.stage-card canvas {
+    display: block;
+    width: 160px;
+    height: 90px;
+    image-rendering: pixelated;
+}
+.stage-card-label {
+    padding: 7px 8px 8px;
+    text-align: center;
+}
+.stage-card-part {
+    font-size: 0.65rem;
+    font-family: 'Segoe UI', sans-serif;
+    font-weight: bold;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+}
+.stage-card-name {
+    font-size: 1.1rem;
+    letter-spacing: 1px;
+}
