@@ -1478,6 +1478,7 @@ class Player {
     useSpecial(opp) {
         this.sp = 0;
         // Play stand sound if this character has one
+        console.log('useSpecial fired for:', this.data.name, '| sound:', this.data.sound || 'none');
         if (this.data.sound) SoundManager.play(this.data.sound);
         const sType = this.data.specialType;
 
@@ -1832,6 +1833,16 @@ class Player {
             ctx.strokeStyle = "cyan";
             ctx.lineWidth = 4;
             ctx.strokeRect(this.x - 4, this.y - 4, this.w + 8, this.h + 8);
+        }
+        // SPECIAL READY indicator
+        if (this.sp >= 100) {
+            const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 150);
+            ctx.globalAlpha = pulse;
+            ctx.fillStyle = this.id === 1 ? '#00ffff' : '#ff4444';
+            ctx.font = "bold 16px Bangers";
+            ctx.textAlign = "center";
+            ctx.fillText("★ SPECIAL READY ★", this.x + this.w / 2, this.y - 30);
+            ctx.globalAlpha = 1;
         }
         // Name tag
         ctx.fillStyle = this.id === 1 ? 'var(--jojo-blue, #3498db)' : '#e74c3c';
