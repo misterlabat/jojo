@@ -43,6 +43,11 @@ const camera = {
 let timeStopped = false;
 let timeStopperId = null;
 
+// ── GAME MODE & AI ──────────────────────────────────────────
+let gameMode = 'pvp';       // 'pvp' or 'cpu'
+let aiDifficulty = 'medium'; // 'easy', 'medium', 'hard'
+let aiController = null;
+
 // ============================================================
 // CHARACTER ROSTER - Parts 3 through 9
 // ============================================================
@@ -827,13 +832,40 @@ CHARACTERS.forEach((char, i) => {
     charGrid.appendChild(card);
 });
 
+function selectMode(mode) {
+    gameMode = mode;
+    document.getElementById('mode-select').style.display = 'none';
+    if (mode === 'cpu') {
+        document.getElementById('difficulty-select').style.display = 'flex';
+    } else {
+        // PvP — go straight to char select
+        document.getElementById('char-select').style.display = 'flex';
+        document.getElementById('controls-p2-hint').style.display = '';
+    }
+}
+
+function selectDifficulty(diff) {
+    aiDifficulty = diff;
+    document.getElementById('difficulty-select').style.display = 'none';
+    document.getElementById('char-select').style.display = 'flex';
+    document.getElementById('selection-msg').innerText = "Player 1: Select Your Character";
+    document.getElementById('controls-p2-hint').style.display = 'none';
+}
+
 function selectChar(idx, el) {
     if (selectingPlayer === 1) {
         p1Data = CHARACTERS[idx];
         el.classList.add('selected-p1');
-        selectingPlayer = 2;
-        document.getElementById('selection-msg').innerText = "Player 2: Select Character";
-        document.getElementById('selection-msg').style.color = 'var(--jojo-red)';
+
+        if (gameMode === 'cpu') {
+            // Pick a random character for the AI
+            p2Data = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+            setTimeout(initGame, 400);
+        } else {
+            selectingPlayer = 2;
+            document.getElementById('selection-msg').innerText = "Player 2: Select Character";
+            document.getElementById('selection-msg').style.color = 'var(--jojo-red)';
+        }
     } else {
         p2Data = CHARACTERS[idx];
         el.classList.add('selected-p2');
@@ -1432,8 +1464,115 @@ class Projectile {
 }
 
 // ============================================================
-// HUD / BARS
+// AI CONTROLLER
 // ============================================================
+class AIController {
+    constructor(aiPlayer, difficulty) {
+        this.ai = aiPlayer;       // the Player instance the AI controls
+        this.difficulty = difficulty;
+
+        // Difficulty tuning knobs
+        const cfg = {
+            easy:   { reactionDelay: 55, attackRange: 160, jumpChance: 0.004, specialChance: 0.003, retreatHP: 0,   aggroDist: 250, mistakeChance: 0.35 },
+            medium: { reactionDelay: 28, attackRange: 180, jumpChance: 0.008, specialChance: 0.012, retreatHP: 0.3, aggroDist: 320, mistakeChance: 0.15 },
+            hard:   { reactionDelay: 10, attackRange: 200, jumpChance: 0.015, specialChance: 0.030, retreatHP: 0.2, aggroDist: 400, mistakeChance: 0.04 },
+        };
+        this.cfg = cfg[difficulty];
+
+        this.actionTimer = 0;       // frames until AI can react again
+        this.currentAction = null;  // what the AI is doing right now
+        this.actionDuration = 0;    // how many frames to hold current action
+        this.jumpCooldown = 0;
+    }
+
+    // Simulate pressing a key for the AI's fake controls
+    press(ctrl) { keys[this.ai.controls[ctrl]] = true; }
+    release(ctrl) { keys[this.ai.controls[ctrl]] = false; }
+    releaseAll() {
+        ['left','right','up','attack','special'].forEach(k => keys[this.ai.controls[k]] = false);
+    }
+
+    update(opponent) {
+        if (!gameRunning) return;
+        if (this.ai.stunned > 0 || (timeStopped && timeStopperId !== this.ai.id)) {
+            this.releaseAll();
+            return;
+        }
+
+        // Reaction delay — AI doesn't respond every single frame
+        if (this.actionTimer > 0) { this.actionTimer--; return; }
+        this.actionTimer = this.cfg.reactionDelay;
+
+        // Random mistakes to make AI feel human
+        if (Math.random() < this.cfg.mistakeChance) {
+            this.releaseAll();
+            return;
+        }
+
+        this.releaseAll(); // reset inputs before deciding
+
+        const dist = Math.abs(this.ai.x - opponent.x);
+        const isLeft = this.ai.x > opponent.x;
+        const hpRatio = this.ai.hp / this.ai.data.hp;
+        const isRanged = this.ai.data.type === 'ranged';
+
+        // ── SPECIAL MOVE ──────────────────────────
+        if (this.ai.sp >= 100 && Math.random() < this.cfg.specialChance) {
+            this.press('special');
+            return;
+        }
+
+        // ── RETREAT if low hp (medium/hard only) ──
+        if (hpRatio < this.cfg.retreatHP && dist < 200) {
+            isLeft ? this.press('right') : this.press('left');
+            // Jump away sometimes
+            if (!this.ai.isJumping && this.jumpCooldown <= 0 && Math.random() < 0.3) {
+                this.press('up');
+                this.jumpCooldown = 60;
+            }
+            return;
+        }
+
+        // ── RANGED characters: preferred attack distance ──
+        if (isRanged) {
+            const preferDist = 300;
+            if (dist > preferDist + 60) {
+                // Move closer
+                isLeft ? this.press('left') : this.press('right');
+            } else if (dist < preferDist - 60) {
+                // Too close, back off a little
+                isLeft ? this.press('right') : this.press('left');
+            }
+            // Fire if in range
+            if (dist < preferDist + 100 && this.ai.attackCD <= 0) {
+                this.press('attack');
+            }
+        } else {
+            // ── MELEE characters: rush in ──
+            if (dist > this.cfg.attackRange) {
+                isLeft ? this.press('left') : this.press('right');
+            } else {
+                // In range — attack
+                if (this.ai.attackCD <= 0) this.press('attack');
+            }
+        }
+
+        // ── JUMPING ──────────────────────────────
+        if (this.jumpCooldown > 0) this.jumpCooldown--;
+        if (!this.ai.isJumping && this.jumpCooldown <= 0) {
+            // Jump to close distance or dodge
+            const shouldJump =
+                (dist > this.cfg.aggroDist && Math.random() < this.cfg.jumpChance * 3) ||
+                (Math.random() < this.cfg.jumpChance);
+            if (shouldJump) {
+                this.press('up');
+                this.jumpCooldown = 50;
+            }
+        }
+    }
+}
+
+
 function updateBars() {
     if (!player1 || !player2) return;
     document.getElementById('p1-hp').style.width = (player1.hp / player1.data.hp) * 100 + "%";
@@ -1452,10 +1591,35 @@ function updateBars() {
 function initGame() {
     document.getElementById('char-select').style.display = 'none';
     document.getElementById('hud').style.display = 'flex';
+
     player1 = new Player(1, WORLD_WIDTH * 0.3, p1Data, { up: 'KeyW', left: 'KeyA', right: 'KeyD', attack: 'KeyF', special: 'KeyG' });
     player2 = new Player(2, WORLD_WIDTH * 0.7, p2Data, { up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', attack: 'KeyL', special: 'KeyK' });
+
     document.getElementById('p1-label').innerText = p1Data.name;
-    document.getElementById('p2-label').innerText = p2Data.name;
+
+    if (gameMode === 'cpu') {
+        // Show AI character name + difficulty badge
+        document.getElementById('p2-label').innerText = p2Data.name;
+        // Add AI badge to p2 stats
+        const p2stats = document.querySelector('.player-stats:last-child');
+        let badge = document.getElementById('ai-label');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'ai-label';
+            badge.innerText = 'CPU · ' + aiDifficulty.toUpperCase();
+            p2stats.appendChild(badge);
+        } else {
+            badge.innerText = 'CPU · ' + aiDifficulty.toUpperCase();
+            badge.style.display = '';
+        }
+        aiController = new AIController(player2, aiDifficulty);
+    } else {
+        document.getElementById('p2-label').innerText = p2Data.name;
+        aiController = null;
+        const badge = document.getElementById('ai-label');
+        if (badge) badge.style.display = 'none';
+    }
+
     gameRunning = true;
     updateBars();
     gameLoop();
@@ -1463,9 +1627,11 @@ function initGame() {
 
 function endGame(winner) {
     gameRunning = false;
+    if (aiController) aiController.releaseAll();
     document.getElementById('win-screen').style.display = 'flex';
     const winnerData = winner === 1 ? p1Data : p2Data;
-    document.getElementById('win-text').innerText = winnerData.name + " WINS!";
+    const isCPUWin = gameMode === 'cpu' && winner === 2;
+    document.getElementById('win-text').innerText = winnerData.name + (isCPUWin ? ' (CPU) WINS!' : ' WINS!');
     document.getElementById('win-text').style.color = winner === 1 ? 'var(--jojo-blue)' : 'var(--jojo-red)';
 }
 
@@ -1477,6 +1643,10 @@ window.addEventListener('keyup', e => keys[e.code] = false);
 // ============================================================
 function gameLoop() {
     if (!gameRunning) return;
+
+    // Tick AI before player updates so inputs are set
+    if (aiController) aiController.update(player1);
+
     player1.update(player2);
     player2.update(player1);
     projectiles = projectiles.filter(p => p.active);
