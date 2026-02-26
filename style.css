@@ -165,6 +165,8 @@ h1 {
     grid-template-columns: repeat(4, 1fr);
     gap: 18px;
     padding: 10px;
+    max-height: 70vh;
+    overflow-y: auto;
 }
 .stage-card {
     width: 160px;
