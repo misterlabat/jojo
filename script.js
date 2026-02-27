@@ -1086,7 +1086,7 @@ document.addEventListener('keydown', (e) => {
         const secretChar = CHARACTERS.find(c => c.secret);
         if (!secretChar) return;
         const overlay = document.getElementById('char-select');
-        if (overlay.style.display === 'none' || overlay.style.display === '') return;
+        if (overlay.style.display !== 'flex') return;
         if (selectingPlayer === 1) {
             p1Data = secretChar;
             if (gameMode === 'cpu') {
