@@ -974,6 +974,19 @@ const CHARACTERS = [
         // Normal: fires musical note projectiles
         // Special: plants do-re-mi scale mines across the ground that detonate when walked over
     },
+    // ─── ???: SECRET ─────────────────────────────────────────
+    {
+        name: "???",
+        part: 0,
+        color: "#ff0000",
+        hp: 999,
+        speed: 12,
+        dmg: 60,
+        type: "melee",
+        specialType: "glitch_nuke",
+        secret: true,
+        desc: "UNKNOWN: ████████████████████████"
+    },
 ];
 
 let p1Data, p2Data, player1, player2;
@@ -1007,7 +1020,8 @@ const PART_COLORS = {
 
 // Group chars by part and build grid with headers
 let currentPart = null;
-CHARACTERS.forEach((char, i) => {
+CHARACTERS.filter(c => !c.secret).forEach((char, i) => {
+    const realIdx = CHARACTERS.indexOf(char);
     if (char.part !== currentPart) {
         currentPart = char.part;
         const header = document.createElement('div');
@@ -1025,7 +1039,7 @@ CHARACTERS.forEach((char, i) => {
         <div class="char-name" style="color:${char.color}">${char.name}</div>
         <div class="char-desc">${char.desc}</div>
     `;
-    card.onclick = () => selectChar(i, card);
+    card.onclick = () => selectChar(realIdx, card);
     charGrid.appendChild(card);
 });
 
@@ -1065,6 +1079,30 @@ function pickStage(idx) {
     document.getElementById('stage-select').style.display = 'none';
     initGame();
 }
+
+// Secret character — press X during character select to instantly pick ???
+document.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyX') {
+        const secretChar = CHARACTERS.find(c => c.secret);
+        if (!secretChar) return;
+        const overlay = document.getElementById('char-select');
+        if (overlay.style.display === 'none' || overlay.style.display === '') return;
+        if (selectingPlayer === 1) {
+            p1Data = secretChar;
+            if (gameMode === 'cpu') {
+                p2Data = CHARACTERS.filter(c => !c.secret)[Math.floor(Math.random() * (CHARACTERS.length - 1))];
+                setTimeout(showStageSelect, 200);
+            } else {
+                selectingPlayer = 2;
+                document.getElementById('selection-msg').innerText = "Player 2: Select Character";
+                document.getElementById('selection-msg').style.color = 'var(--jojo-red)';
+            }
+        } else {
+            p2Data = secretChar;
+            setTimeout(showStageSelect, 200);
+        }
+    }
+});
 
 function selectMode(mode) {
     gameMode = mode;
@@ -1839,6 +1877,32 @@ class Player {
                     }, i * 100);
                 }
                 break;
+
+            case "glitch_nuke":
+                // ??? : everything at once — timestop, nuke damage, screen flash, projectile storm
+                timeStopped = true; timeStopperId = this.id;
+                tsOverlay.style.display = 'block';
+                tsOverlay.style.background = 'rgba(255,0,0,0.25)';
+                // Instant massive damage
+                opp.takeDamage(this.data.dmg * 3, this.facing);
+                opp.stunned = 180;
+                opp.vy = -20;
+                // Storm of projectiles from all directions
+                for (let i = 0; i < 20; i++) {
+                    setTimeout(() => {
+                        for (let dir of [1, -1]) {
+                            const p = new Projectile(this.x + this.w/2, this.y + this.h/2, dir, this.id, this.data.dmg * 0.8, "shard");
+                            p.vy = (Math.random() - 0.5) * 20;
+                            p.vx = dir * (10 + Math.random() * 12);
+                            projectiles.push(p);
+                        }
+                    }, i * 60);
+                }
+                // Heal self during the chaos
+                this.hp = Math.min(this.data.hp, this.hp + 200);
+                this.invul = 200;
+                setTimeout(() => { timeStopped = false; timeStopperId = null; tsOverlay.style.display = 'none'; }, 3000);
+                break;
         }
         updateBars();
     }
@@ -1891,6 +1955,18 @@ class Player {
             ctx.font = "bold 16px Bangers";
             ctx.textAlign = "center";
             ctx.fillText("★ SPECIAL READY ★", this.x + this.w / 2, this.y - 30);
+            ctx.globalAlpha = 1;
+        }
+        // Glitch effect for secret character
+        if (this.data.secret) {
+            const glitch = Math.sin(Date.now() / 60) > 0.5;
+            ctx.strokeStyle = glitch ? '#ff0000' : '#ff00ff';
+            ctx.lineWidth = 3 + Math.random() * 4;
+            ctx.strokeRect(this.x - 4, this.y - 4, this.w + 8, this.h + 8);
+            // Glitchy offset copy
+            ctx.globalAlpha = 0.3;
+            ctx.fillStyle = glitch ? '#ff0000' : '#00ffff';
+            ctx.fillRect(this.x + (Math.random() - 0.5) * 10, this.y + (Math.random() - 0.5) * 10, this.w, this.h);
             ctx.globalAlpha = 1;
         }
         // Name tag
