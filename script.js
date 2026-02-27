@@ -2135,106 +2135,139 @@ class Projectile {
 // ============================================================
 class AIController {
     constructor(aiPlayer, difficulty) {
-        this.ai = aiPlayer;       // the Player instance the AI controls
+        this.ai = aiPlayer;
         this.difficulty = difficulty;
 
-        // Difficulty tuning knobs
         const cfg = {
-            easy:   { reactionDelay: 55, attackRange: 160, jumpChance: 0.004, specialChance: 0.003, retreatHP: 0,   aggroDist: 250, mistakeChance: 0.35 },
-            medium: { reactionDelay: 28, attackRange: 180, jumpChance: 0.008, specialChance: 0.012, retreatHP: 0.3, aggroDist: 320, mistakeChance: 0.15 },
-            hard:   { reactionDelay: 10, attackRange: 200, jumpChance: 0.015, specialChance: 0.030, retreatHP: 0.2, aggroDist: 400, mistakeChance: 0.04 },
+            easy:   { reactionDelay: 40, attackRange: 170, jumpChance: 0.005, specialChance: 0.004, retreatHP: 0,    mistakeChance: 0.25, preferDist: 320 },
+            medium: { reactionDelay: 18, attackRange: 190, jumpChance: 0.012, specialChance: 0.018, retreatHP: 0.25, mistakeChance: 0.10, preferDist: 280 },
+            hard:   { reactionDelay: 6,  attackRange: 210, jumpChance: 0.022, specialChance: 0.040, retreatHP: 0.18, mistakeChance: 0.02, preferDist: 250 },
         };
         this.cfg = cfg[difficulty];
-
-        this.actionTimer = 0;       // frames until AI can react again
-        this.currentAction = null;  // what the AI is doing right now
-        this.actionDuration = 0;    // how many frames to hold current action
+        this.decisionTimer = 0;
         this.jumpCooldown = 0;
+
+        // Current decision state — held between frames so movement is smooth
+        this.wantLeft   = false;
+        this.wantRight  = false;
+        this.wantAttack = false;
+        this.wantJump   = false;
+        this.wantSpecial = false;
     }
 
-    // Simulate pressing a key for the AI's fake controls
-    press(ctrl) { keys[this.ai.controls[ctrl]] = true; }
+    press(ctrl)   { keys[this.ai.controls[ctrl]] = true; }
     release(ctrl) { keys[this.ai.controls[ctrl]] = false; }
-    releaseAll() {
-        ['left','right','up','attack','special'].forEach(k => keys[this.ai.controls[k]] = false);
+
+    applyInputs() {
+        keys[this.ai.controls.left]    = this.wantLeft;
+        keys[this.ai.controls.right]   = this.wantRight;
+        keys[this.ai.controls.attack]  = this.wantAttack;
+        keys[this.ai.controls.up]      = this.wantJump;
+        keys[this.ai.controls.special] = this.wantSpecial;
     }
 
     update(opponent) {
         if (!gameRunning) return;
+
+        // Can't act while stunned or time-stopped by opponent
         if (this.ai.stunned > 0 || (timeStopped && timeStopperId !== this.ai.id)) {
-            this.releaseAll();
+            this.wantLeft = this.wantRight = this.wantAttack = this.wantJump = this.wantSpecial = false;
+            this.applyInputs();
             return;
         }
 
-        // Reaction delay — AI doesn't respond every single frame
-        if (this.actionTimer > 0) { this.actionTimer--; return; }
-        this.actionTimer = this.cfg.reactionDelay;
+        if (this.jumpCooldown > 0) this.jumpCooldown--;
 
-        // Random mistakes to make AI feel human
-        if (Math.random() < this.cfg.mistakeChance) {
-            this.releaseAll();
-            return;
+        // Only re-think every N frames — but keep holding inputs from last decision
+        this.decisionTimer--;
+        if (this.decisionTimer <= 0) {
+            this.decisionTimer = this.cfg.reactionDelay;
+            this.think(opponent);
         }
 
-        this.releaseAll(); // reset inputs before deciding
+        // Always apply whatever current decision is — this is the key fix
+        this.applyInputs();
 
-        const dist = Math.abs(this.ai.x - opponent.x);
-        const isLeft = this.ai.x > opponent.x;
+        // Release jump after 1 frame so it doesn't hold
+        this.wantJump = false;
+    }
+
+    think(opponent) {
+        // Reset
+        this.wantLeft = this.wantRight = this.wantAttack = this.wantJump = this.wantSpecial = false;
+
+        // Random mistake — AI does nothing this tick
+        if (Math.random() < this.cfg.mistakeChance) return;
+
+        const aiCX   = this.ai.x + this.ai.w / 2;
+        const oppCX  = opponent.x + opponent.w / 2;
+        const dist   = Math.abs(aiCX - oppCX);
+        const isLeft = aiCX > oppCX;   // true = AI is to the right of opponent
         const hpRatio = this.ai.hp / this.ai.data.hp;
         const isRanged = this.ai.data.type === 'ranged';
 
-        // ── SPECIAL MOVE ──────────────────────────
+        // ── USE SPECIAL when SP full ──────────────────────────────
         if (this.ai.sp >= 100 && Math.random() < this.cfg.specialChance) {
-            this.press('special');
+            this.wantSpecial = true;
             return;
         }
 
-        // ── RETREAT if low hp (medium/hard only) ──
-        if (hpRatio < this.cfg.retreatHP && dist < 200) {
-            isLeft ? this.press('right') : this.press('left');
-            // Jump away sometimes
-            if (!this.ai.isJumping && this.jumpCooldown <= 0 && Math.random() < 0.3) {
-                this.press('up');
-                this.jumpCooldown = 60;
+        // ── LOW HP RETREAT (medium/hard) ──────────────────────────
+        if (this.cfg.retreatHP > 0 && hpRatio < this.cfg.retreatHP && dist < 250) {
+            // Run away and jump
+            this.wantLeft  = !isLeft;
+            this.wantRight = isLeft;
+            if (!this.ai.isJumping && this.jumpCooldown <= 0 && Math.random() < 0.4) {
+                this.wantJump = true;
+                this.jumpCooldown = 55;
             }
             return;
         }
 
-        // ── RANGED characters: preferred attack distance ──
+        // ── RANGED CHARACTER BEHAVIOUR ────────────────────────────
         if (isRanged) {
-            const preferDist = 300;
-            if (dist > preferDist + 60) {
-                // Move closer
-                isLeft ? this.press('left') : this.press('right');
-            } else if (dist < preferDist - 60) {
-                // Too close, back off a little
-                isLeft ? this.press('right') : this.press('left');
+            const pref = this.cfg.preferDist;
+            if (dist > pref + 50) {
+                // Too far — move closer
+                this.wantLeft  = isLeft;
+                this.wantRight = !isLeft;
+            } else if (dist < pref - 60) {
+                // Too close — back up
+                this.wantLeft  = !isLeft;
+                this.wantRight = isLeft;
             }
-            // Fire if in range
-            if (dist < preferDist + 100 && this.ai.attackCD <= 0) {
-                this.press('attack');
+            // Always try to fire if attack CD is ready and within range
+            if (dist < pref + 120 && this.ai.attackCD <= 0) {
+                this.wantAttack = true;
             }
-        } else {
-            // ── MELEE characters: rush in ──
+        }
+
+        // ── MELEE CHARACTER BEHAVIOUR ─────────────────────────────
+        else {
             if (dist > this.cfg.attackRange) {
-                isLeft ? this.press('left') : this.press('right');
+                // Close the gap aggressively
+                this.wantLeft  = isLeft;
+                this.wantRight = !isLeft;
+                // Jump to close distance faster on hard
+                if (!this.ai.isJumping && this.jumpCooldown <= 0 && dist > 350 && Math.random() < this.cfg.jumpChance * 4) {
+                    this.wantJump = true;
+                    this.jumpCooldown = 45;
+                }
             } else {
                 // In range — attack
-                if (this.ai.attackCD <= 0) this.press('attack');
+                if (this.ai.attackCD <= 0) this.wantAttack = true;
+                // Occasionally dodge sideways after attacking
+                if (Math.random() < 0.15) {
+                    this.wantLeft  = !isLeft;
+                    this.wantRight = isLeft;
+                }
             }
         }
 
-        // ── JUMPING ──────────────────────────────
-        if (this.jumpCooldown > 0) this.jumpCooldown--;
-        if (!this.ai.isJumping && this.jumpCooldown <= 0) {
-            // Jump to close distance or dodge
-            const shouldJump =
-                (dist > this.cfg.aggroDist && Math.random() < this.cfg.jumpChance * 3) ||
-                (Math.random() < this.cfg.jumpChance);
-            if (shouldJump) {
-                this.press('up');
-                this.jumpCooldown = 50;
-            }
+        // ── RANDOM JUMP to dodge/reposition ──────────────────────
+        if (!this.ai.isJumping && this.jumpCooldown <= 0 && Math.random() < this.cfg.jumpChance) {
+            this.wantJump = true;
+            this.jumpCooldown = 50;
         }
     }
 }
