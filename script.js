@@ -979,12 +979,13 @@ const CHARACTERS = [
         name: "???",
         part: 0,
         color: "#ff0000",
-        hp: 999,
-        speed: 12,
-        dmg: 60,
+        hp: 450,
+        speed: 10,
+        dmg: 22,
         type: "melee",
         specialType: "glitch_nuke",
         secret: true,
+        spGainMult: 4,
         desc: "UNKNOWN: ████████████████████████"
     },
 ];
@@ -1879,29 +1880,62 @@ class Player {
                 break;
 
             case "glitch_nuke":
-                // ??? : everything at once — timestop, nuke damage, screen flash, projectile storm
+                // ??? : reality break — the most unhinged special in the game
+                // Phase 1: screen goes full red, time stops
                 timeStopped = true; timeStopperId = this.id;
                 tsOverlay.style.display = 'block';
-                tsOverlay.style.background = 'rgba(255,0,0,0.25)';
-                // Instant massive damage
-                opp.takeDamage(this.data.dmg * 3, this.facing);
-                opp.stunned = 180;
-                opp.vy = -20;
-                // Storm of projectiles from all directions
-                for (let i = 0; i < 20; i++) {
+                tsOverlay.style.background = 'rgba(255,0,0,0.35)';
+                tsOverlay.style.transition = 'background 0.1s';
+                this.invul = 300;
+
+                // Phase 2: glitch flash sequence on the canvas overlay
+                let flashCount = 0;
+                const flashInterval = setInterval(() => {
+                    const colors = ['rgba(255,0,0,0.4)','rgba(0,255,255,0.3)','rgba(255,0,255,0.4)','rgba(255,255,0,0.3)','rgba(0,0,0,0.7)'];
+                    tsOverlay.style.background = colors[flashCount % colors.length];
+                    flashCount++;
+                    if (flashCount > 18) clearInterval(flashInterval);
+                }, 80);
+
+                // Phase 3: projectile apocalypse — shards, waves, everything from every angle
+                for (let i = 0; i < 30; i++) {
                     setTimeout(() => {
                         for (let dir of [1, -1]) {
-                            const p = new Projectile(this.x + this.w/2, this.y + this.h/2, dir, this.id, this.data.dmg * 0.8, "shard");
-                            p.vy = (Math.random() - 0.5) * 20;
-                            p.vx = dir * (10 + Math.random() * 12);
+                            const types = ['shard','sound_wave','emerald','flame','knife','sand_blade'];
+                            const t = types[i % types.length];
+                            const p = new Projectile(this.x + this.w/2, this.y + this.h/2, dir, this.id, this.data.dmg * 1.2, t);
+                            p.vy = (Math.random() - 0.5) * 24;
+                            p.vx = dir * (8 + Math.random() * 14);
                             projectiles.push(p);
                         }
-                    }, i * 60);
+                        // Also drop some from the sky onto the opponent
+                        if (i < 12) {
+                            const sky = new Projectile(opp.x + (Math.random()-0.5)*150, -20, 0, this.id, this.data.dmg * 0.9, 'lightning_bolt');
+                            sky.vx = 0; sky.vy = 22;
+                            projectiles.push(sky);
+                        }
+                    }, i * 70);
                 }
-                // Heal self during the chaos
-                this.hp = Math.min(this.data.hp, this.hp + 200);
-                this.invul = 200;
-                setTimeout(() => { timeStopped = false; timeStopperId = null; tsOverlay.style.display = 'none'; }, 3000);
+
+                // Phase 4: damage pulses — not instant, comes in waves so it feels earned
+                for (let i = 0; i < 5; i++) {
+                    setTimeout(() => {
+                        opp.takeDamage(this.data.dmg * 0.8, this.facing);
+                        if (i === 0) { opp.stunned = 200; opp.vy = -18; }
+                    }, i * 250);
+                }
+
+                // Phase 5: heal a chunk
+                setTimeout(() => {
+                    this.hp = Math.min(this.data.hp, this.hp + 80);
+                }, 500);
+
+                // Phase 6: end the madness
+                setTimeout(() => {
+                    timeStopped = false; timeStopperId = null;
+                    tsOverlay.style.display = 'none';
+                    tsOverlay.style.transition = '';
+                }, 2200);
                 break;
         }
         updateBars();
@@ -1916,7 +1950,7 @@ class Player {
         updateBars();
     }
 
-    gainSP(a) { this.sp = Math.min(100, this.sp + a); updateBars(); }
+    gainSP(a) { this.sp = Math.min(100, this.sp + a * (this.data.spGainMult || 1)); updateBars(); }
     checkCollision(x, y, w, h, t) { return x < t.x + t.w && x + w > t.x && y < t.y + t.h && y + h > t.y; }
 
     draw() {
@@ -1959,15 +1993,65 @@ class Player {
         }
         // Glitch effect for secret character
         if (this.data.secret) {
-            const glitch = Math.sin(Date.now() / 60) > 0.5;
-            ctx.strokeStyle = glitch ? '#ff0000' : '#ff00ff';
-            ctx.lineWidth = 3 + Math.random() * 4;
-            ctx.strokeRect(this.x - 4, this.y - 4, this.w + 8, this.h + 8);
-            // Glitchy offset copy
-            ctx.globalAlpha = 0.3;
-            ctx.fillStyle = glitch ? '#ff0000' : '#00ffff';
-            ctx.fillRect(this.x + (Math.random() - 0.5) * 10, this.y + (Math.random() - 0.5) * 10, this.w, this.h);
+            const t = Date.now();
+            const glitch = Math.sin(t / 60) > 0.4;
+
+            // Chromatic aberration copies
+            ctx.globalAlpha = 0.25;
+            ctx.fillStyle = '#ff0000';
+            ctx.fillRect(this.x - 4 + Math.sin(t/80)*6, this.y, this.w, this.h);
+            ctx.fillStyle = '#00ffff';
+            ctx.fillRect(this.x + 4 + Math.sin(t/65)*6, this.y, this.w, this.h);
+            ctx.fillStyle = '#ff00ff';
+            ctx.fillRect(this.x + Math.sin(t/45)*8, this.y - 3, this.w, this.h);
             ctx.globalAlpha = 1;
+
+            // Flashing border
+            ctx.strokeStyle = glitch ? '#ff0000' : '#ff00ff';
+            ctx.lineWidth = 4 + Math.abs(Math.sin(t/50)) * 5;
+            ctx.strokeRect(this.x - 5, this.y - 5, this.w + 10, this.h + 10);
+
+            // Random static lines across body
+            if (Math.random() > 0.6) {
+                ctx.strokeStyle = `rgba(255,${Math.floor(Math.random()*255)},${Math.floor(Math.random()*255)},0.8)`;
+                ctx.lineWidth = 2;
+                const ly = this.y + Math.random() * this.h;
+                ctx.beginPath(); ctx.moveTo(this.x, ly); ctx.lineTo(this.x + this.w, ly); ctx.stroke();
+            }
+
+            // Orbiting glitch particles
+            for (let o = 0; o < 4; o++) {
+                const angle = (t / 300) + (o * Math.PI / 2);
+                const ox = this.x + this.w/2 + Math.cos(angle) * 45;
+                const oy = this.y + this.h/2 + Math.sin(angle) * 45;
+                const pc = ['#ff0000','#00ffff','#ff00ff','#ffff00'][o];
+                ctx.fillStyle = pc;
+                ctx.globalAlpha = 0.8;
+                ctx.fillRect(ox - 4, oy - 4, 8, 8);
+                ctx.globalAlpha = 1;
+            }
+
+            // Custom punch flash — when attacking show a massive multi-color explosion
+            if (this.isAttacking) {
+                const hx = this.facing === 1 ? this.x + this.w + 10 : this.x - 60;
+                const flashColors = ['#ff0000','#ff00ff','#00ffff','#ffff00','#ffffff'];
+                flashColors.forEach((fc, fi) => {
+                    ctx.globalAlpha = 0.3 - fi * 0.04;
+                    ctx.fillStyle = fc;
+                    ctx.beginPath();
+                    ctx.arc(hx + 25, this.y + 50, 40 - fi * 6, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1;
+                // Shockwave ring
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 3;
+                ctx.globalAlpha = 0.6;
+                ctx.beginPath();
+                ctx.arc(hx + 25, this.y + 50, 55, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
         }
         // Name tag
         ctx.fillStyle = this.id === 1 ? 'var(--jojo-blue, #3498db)' : '#e74c3c';
